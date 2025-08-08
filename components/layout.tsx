@@ -1,3 +1,4 @@
+'use client'
 import { useState } from 'react'
 import Sidebar from './sidebar'
 import Topbar from './topbar'
