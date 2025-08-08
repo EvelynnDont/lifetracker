@@ -27,23 +27,34 @@ export default function Dashboard() {
   const [sheet, setSheet] = useState<string | null>(null)
 
   useEffect(() => {
-    const saved = typeof window !== 'undefined' ? localStorage.getItem('lifetracker:sheet') : null
+    const saved =
+      typeof window !== 'undefined' ? localStorage.getItem('lifetracker:sheet') : null
+
     setSheet(saved)
-    async function fetchData() {
+
+    // If no sheet saved yet, don't hit the API that requires ?sheet=
+    if (!saved) {
+      setError('Go to Settings and save your Google Sheet link.')
+      setLoading(false)
+      return
+    }
+
+    ;(async () => {
       try {
-        setError(null); setLoading(true)
-        const url = saved ? `/api/data?sheet=${encodeURIComponent(saved)}` : '/api/data'
-        const res = await fetch(url, { cache: 'no-store' })
+        setError(null)
+        setLoading(true)
+        const res = await fetch(`/api/data?sheet=${encodeURIComponent(saved)}`, {
+          cache: 'no-store'
+        })
         const json = await res.json()
         if (!res.ok) throw new Error(json?.error || 'Failed to fetch data')
         setData(json as DataRecord[])
-      } catch (err:any) {
+      } catch (err: any) {
         setError(err.message || 'Error loading data')
       } finally {
         setLoading(false)
       }
-    }
-    fetchData()
+    })()
   }, [])
 
   const kpis = useMemo(() => {
@@ -51,8 +62,8 @@ export default function Dashboard() {
     const last = data[data.length - 1]
     const lastSeven = data.slice(Math.max(0, data.length - 7))
     const avg = lastSeven.reduce((acc, d) => acc + d.dailyTotal, 0) / lastSeven.length
-    const best = Math.max(...data.map(d => d.dailyTotal))
-    const worst = Math.min(...data.map(d => d.dailyTotal))
+    const best = Math.max(...data.map((d) => d.dailyTotal))
+    const worst = Math.min(...data.map((d) => d.dailyTotal))
     return [
       { title: "Today's Score", value: last.dailyTotal },
       { title: '7-Day Avg', value: avg.toFixed(2) },
