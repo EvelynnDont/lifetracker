@@ -28,14 +28,27 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchData() {
       try {
-        const res = await fetch('/api/data')
+        setError(null)
+        setLoading(true)
+
+        // Pull the saved Google Sheet link (saved in Settings)
+        const saved = typeof window !== 'undefined'
+          ? localStorage.getItem('lifetracker:sheet')
+          : null
+
+        // If you updated the API to accept ?sheet=, use it; otherwise it will fall back to /api/data
+        const url = saved
+          ? `/api/data?sheet=${encodeURIComponent(saved)}`
+          : `/api/data`
+
+        const res = await fetch(url, { cache: 'no-store' })
         const json = await res.json()
         if (!res.ok) {
-          throw new Error(json.error || 'Failed to fetch data')
+          throw new Error(json?.error || 'Failed to fetch data')
         }
-        setData(json)
+        setData(json as DataRecord[])
       } catch (err: any) {
-        setError(err.message)
+        setError(err.message || 'Error loading data')
       } finally {
         setLoading(false)
       }
@@ -51,29 +64,27 @@ export default function Dashboard() {
     const best = Math.max(...data.map((d) => d.dailyTotal))
     const worst = Math.min(...data.map((d) => d.dailyTotal))
     return [
-      {
-        title: "Today's Score",
-        value: last.dailyTotal
-      },
-      {
-        title: '7-Day Avg',
-        value: avg.toFixed(2)
-      },
-      {
-        title: 'Best Day',
-        value: best
-      },
-      {
-        title: 'Worst Day',
-        value: worst
-      }
+      { title: "Today's Score", value: last.dailyTotal },
+      { title: '7-Day Avg', value: avg.toFixed(2) },
+      { title: 'Best Day', value: best },
+      { title: 'Worst Day', value: worst }
     ]
   }, [data])
 
   return (
     <Layout title="Dashboard">
       {loading && <div className="text-muted-foreground">Loading data…</div>}
-      {error && <div className="text-destructive">Error: {error}</div>}
+
+      {error && (
+        <div className="text-destructive">
+          Error: {error}
+          <div className="text-muted-foreground text-sm mt-1">
+            Tip: In Settings, paste your Google Sheet link and click “Save & Test”.
+            Make sure the sheet is shared as “Anyone with the link → Viewer”.
+          </div>
+        </div>
+      )}
+
       {!loading && !error && (
         <>
           {/* KPI Grid */}
@@ -88,11 +99,13 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+
           {/* Charts */}
           <div className="bg-card p-4 rounded-lg border border-border mb-6">
             <h2 className="text-lg font-semibold mb-4">Daily Total Candlestick</h2>
             <CandlestickChart data={data} height={300} maxPoints={90} />
           </div>
+
           {/* Recent Entries Table */}
           <div className="bg-card p-4 rounded-lg border border-border overflow-x-auto">
             <h2 className="text-lg font-semibold mb-4">Recent Entries</h2>
