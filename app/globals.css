@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Define CSS variables for dark theme */
+:root {
+  --background: #09090b;
+  --foreground: #fafafa;
+  --muted-foreground: #a1a1aa;
+  --card: #1f2937;
+  --card-foreground: #e5e7eb;
+  --border: #374151;
+  --popover: #111827;
+  --popover-foreground: #d1d5db;
+  --muted: #1f2937;
+  --primary: #10b981;
+  --primary-foreground: #f0fdf4;
+  --destructive: #ef4444;
+  --ring: #4ade80;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-background text-foreground font-sans;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
