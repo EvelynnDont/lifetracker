@@ -1,19 +1,24 @@
 import { NextResponse } from 'next/server'
 import { parse } from 'papaparse'
 
-// Google Sheet ID for the life tracking data
-const SHEET_ID = '1VEpSZMyKmfZNzW-LdYM4IRO5cyMeImpEEvyA7n4GHu8'
-
-// Fetches the CSV from Google Sheets
-async function fetchSheetCsv(): Promise<string> {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`
-  const res = await fetch(url, {
-    // Use no-store to prevent caching so the latest data is always fetched
-    cache: 'no-store'
-  })
-  if (!res.ok) {
-    throw new Error('Failed to fetch Google Sheet')
+// Turn a full Google Sheets URL or a bare ID into a CSV export URL
+function toCsvUrl(input: string) {
+  try {
+    const u = new URL(input)
+    const parts = u.pathname.split('/')
+    const dIdx = parts.findIndex(p => p === 'd')
+    const id = dIdx >= 0 ? parts[dIdx + 1] : ''
+    if (id) return `https://docs.google.com/spreadsheets/d/${id}/export?format=csv`
+  } catch {
+    /* not a URL, assume it's an ID */
   }
+  return `https://docs.google.com/spreadsheets/d/${input}/export?format=csv`
+}
+
+async function fetchSheetCsv(sheetParam: string): Promise<string> {
+  const url = toCsvUrl(sheetParam)
+  const res = await fetch(url, { cache: 'no-store' })
+  if (!res.ok) throw new Error(`Failed to fetch Google Sheet: ${res.status}`)
   return await res.text()
 }
 
@@ -34,23 +39,29 @@ interface DataRecord {
   dailyTotal: number
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const csvText = await fetchSheetCsv()
-    // Parse CSV into records
-    const result = parse<Record<string, string>>(csvText, { header: true, dynamicTyping: true })
-    const raw = result.data
+    const sp = new URL(req.url).searchParams
+    const sheet = sp.get('sheet')
+    if (!sheet) return NextResponse.json({ error: 'Missing ?sheet=<url|id>' }, { status: 400 })
+
+    const csvText = await fetchSheetCsv(sheet)
+    const result = parse<Record<string, any>>(csvText, { header: true, dynamicTyping: true })
+    const raw = result.data as Record<string, any>[]
+
     const records: DataRecord[] = []
     let prevClose: number | null = null
+
     for (const row of raw) {
-      if (!row.Date) continue
-      // Parse date into ISO (yyyy-mm-dd)
-      const parsedDate = new Date(row.Date)
+      const dateCell = row.Date ?? row.date ?? row.DAY
+      if (!dateCell) continue
+
+      const parsedDate = new Date(dateCell)
       const isoDate = isNaN(parsedDate.getTime())
-        ? row.Date
+        ? String(dateCell)
         : parsedDate.toISOString().split('T')[0]
-      // Extract categories
-      const categories = [
+
+      const nums = [
         row['Personal Well-being'],
         row['Relationships'],
         row['Work/Career'],
@@ -59,32 +70,32 @@ export async function GET() {
         row['Personal Finance'],
         row['Learning & Growth'],
         row['Home & Environment'],
-        row['Daily Total']
-      ].map((v) => (typeof v === 'number' ? v : parseFloat(String(v))))
-      const high = Math.max(...categories)
-      const low = Math.min(...categories)
-      const open = prevClose !== null ? prevClose : categories[categories.length - 1]
-      const close = categories[categories.length - 1]
+        row['Daily Total'],
+      ].map(v => (typeof v === 'number' ? v : Number(v)))
+
+      const high = Math.max(...nums)
+      const low  = Math.min(...nums)
+      const open = prevClose !== null ? prevClose : nums[nums.length - 1]
+      const close = nums[nums.length - 1]
       prevClose = close
+
       records.push({
         date: isoDate,
-        open,
-        close,
-        high,
-        low,
-        personalWellBeing: categories[0],
-        relationships: categories[1],
-        workCareer: categories[2],
-        healthFitness: categories[3],
-        hobbiesInterests: categories[4],
-        personalFinance: categories[5],
-        learningGrowth: categories[6],
-        homeEnvironment: categories[7],
-        dailyTotal: categories[8]
+        open, close, high, low,
+        personalWellBeing: nums[0],
+        relationships: nums[1],
+        workCareer: nums[2],
+        healthFitness: nums[3],
+        hobbiesInterests: nums[4],
+        personalFinance: nums[5],
+        learningGrowth: nums[6],
+        homeEnvironment: nums[7],
+        dailyTotal: nums[8],
       })
     }
+
     return NextResponse.json(records)
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: error.message ?? 'Server error' }, { status: 500 })
   }
 }
